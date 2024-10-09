@@ -419,7 +419,14 @@ def create_parser():
     general.add_option(
         '--live-from-start',
         action='store_true', dest='live_from_start',
-        help='Download livestreams from the start. Currently only supported for YouTube (Experimental)')
+        help=('Download livestreams from the start. Currently only supported for YouTube (Experimental). '
+              'Time ranges can be specified using --download-sections to download only a part of the stream. '
+              'Negative values are allowed for specifying a relative previous time, using the # syntax '
+              'e.g. --download-sections "#-24hours - 0" (download last 24 hours), '
+              'e.g. --download-sections "#-1h - 30m" (download from 1 hour ago until the next 30 minutes), '
+              'e.g. --download-sections "#-3days - -2days" (download from 3 days ago until 2 days ago). '
+              'It is also possible to specify an exact unix timestamp range, using the * syntax, '
+              'e.g. --download-sections "*1672531200 - 1672549200" (download between those two timestamps)'))
     general.add_option(
         '--no-live-from-start',
         action='store_false', dest='live_from_start',
@@ -647,16 +654,16 @@ def create_parser():
             'You can also simply specify a field to match if the field is present, '
             'use "!field" to check if the field is not present, and "&" to check multiple conditions. '
             'Use a "\\" to escape "&" or quotes if needed. If used multiple times, '
-            'the filter matches if at least one of the conditions is met. E.g. --match-filter '
-            '!is_live --match-filter "like_count>?100 & description~=\'(?i)\\bcats \\& dogs\\b\'" '
+            'the filter matches if at least one of the conditions is met. E.g. --match-filters '
+            '!is_live --match-filters "like_count>?100 & description~=\'(?i)\\bcats \\& dogs\\b\'" '
             'matches only videos that are not live OR those that have a like count more than 100 '
             '(or the like field is not available) and also has a description '
             'that contains the phrase "cats & dogs" (caseless). '
-            'Use "--match-filter -" to interactively ask whether to download each video'))
+            'Use "--match-filters -" to interactively ask whether to download each video'))
     selection.add_option(
         '--no-match-filters',
         dest='match_filter', action='store_const', const=None,
-        help='Do not use any --match-filter (default)')
+        help='Do not use any --match-filters (default)')
     selection.add_option(
         '--break-match-filters',
         metavar='FILTER', dest='breaking_match_filter', action='append',
@@ -704,7 +711,7 @@ def create_parser():
     selection.add_option(
         '--break-per-input',
         action='store_true', dest='break_per_url', default=False,
-        help='Alters --max-downloads, --break-on-existing, --break-match-filter, and autonumber to reset per input URL')
+        help='Alters --max-downloads, --break-on-existing, --break-match-filters, and autonumber to reset per input URL')
     selection.add_option(
         '--no-break-per-input',
         action='store_false', dest='break_per_url',
@@ -1725,15 +1732,17 @@ def create_parser():
         '--convert-subs', '--convert-sub', '--convert-subtitles',
         metavar='FORMAT', dest='convertsubtitles', default=None,
         help=(
-            'Convert the subtitles to another format (currently supported: {}) '
-            '(Alias: --convert-subtitles)'.format(', '.join(sorted(FFmpegSubtitlesConvertorPP.SUPPORTED_EXTS)))))
+            'Convert the subtitles to another format '
+            f'(currently supported: {", ".join(sorted(FFmpegSubtitlesConvertorPP.SUPPORTED_EXTS))}). '
+            'Use "--convert-subs none" to disable conversion (default) (Alias: --convert-subtitles)'))
     postproc.add_option(
         '--convert-thumbnails',
         metavar='FORMAT', dest='convertthumbnails', default=None,
         help=(
             'Convert the thumbnails to another format '
             f'(currently supported: {", ".join(sorted(FFmpegThumbnailsConvertorPP.SUPPORTED_EXTS))}). '
-            'You can specify multiple rules using similar syntax as --remux-video'))
+            'You can specify multiple rules using similar syntax as "--remux-video". '
+            'Use "--convert-thumbnails none" to disable conversion (default)'))
     postproc.add_option(
         '--split-chapters', '--split-tracks',
         dest='split_chapters', action='store_true', default=False,

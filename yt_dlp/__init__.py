@@ -12,10 +12,11 @@ import itertools
 import optparse
 import os
 import re
+import time
 import traceback
 
 from .compat import compat_os_name
-from .cookies import SUPPORTED_BROWSERS, SUPPORTED_KEYRINGS
+from .cookies import SUPPORTED_BROWSERS, SUPPORTED_KEYRINGS, CookieLoadError
 from .downloader.external import get_external_downloader
 from .extractor import list_extractor_classes
 from .extractor.adobepass import MSO_INFO
@@ -235,6 +236,11 @@ def validate_options(opts):
         validate_regex('format sorting', f, FormatSorter.regex)
 
     # Postprocessor formats
+    if opts.convertsubtitles == 'none':
+        opts.convertsubtitles = None
+    if opts.convertthumbnails == 'none':
+        opts.convertthumbnails = None
+
     validate_regex('merge output format', opts.merge_output_format,
                    r'({0})(/({0}))*'.format('|'.join(map(re.escape, FFmpegMergerPP.SUPPORTED_EXTS))))
     validate_regex('audio format', opts.audioformat, FFmpegExtractAudioPP.FORMAT_RE)
@@ -333,12 +339,13 @@ def validate_options(opts):
             (?P<end_sign>-?)(?P<end>[^-]+)
         )?'''
 
+        current_time = time.time()
         chapters, ranges, from_url = [], [], False
         for regex in value or []:
             if advanced and regex == '*from-url':
                 from_url = True
                 continue
-            elif not regex.startswith('*'):
+            elif not regex.startswith('*') and not regex.startswith('#'):
                 try:
                     chapters.append(re.compile(regex))
                 except re.error as err:
@@ -355,9 +362,14 @@ def validate_options(opts):
                     err = 'Must be of the form "*start-end"'
                 elif not advanced and any(signs):
                     err = 'Negative timestamps are not allowed'
-                else:
+                elif regex.startswith('*'):
                     dur[0] *= -1 if signs[0] else 1
                     dur[1] *= -1 if signs[1] else 1
+                    if dur[1] == float('-inf'):
+                        err = '"-inf" is not a valid end'
+                elif regex.startswith('#'):
+                    dur[0] = dur[0] * (-1 if signs[0] else 1) + current_time
+                    dur[1] = dur[1] * (-1 if signs[1] else 1) + current_time
                     if dur[1] == float('-inf'):
                         err = '"-inf" is not a valid end'
                 if err:
@@ -1079,7 +1091,7 @@ def main(argv=None):
     _IN_CLI = True
     try:
         _exit(*variadic(_real_main(argv)))
-    except DownloadError:
+    except (CookieLoadError, DownloadError):
         _exit(1)
     except SameFileError as e:
         _exit(f'ERROR: {e}')

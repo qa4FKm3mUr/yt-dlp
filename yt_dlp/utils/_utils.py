@@ -1212,7 +1212,7 @@ def unified_strdate(date_str, day_first=True):
         return str(upload_date)
 
 
-def unified_timestamp(date_str, day_first=True):
+def unified_timestamp(date_str, day_first=True, with_milliseconds=False):
     if not isinstance(date_str, str):
         return None
 
@@ -1238,7 +1238,7 @@ def unified_timestamp(date_str, day_first=True):
     for expression in date_formats(day_first):
         with contextlib.suppress(ValueError):
             dt_ = dt.datetime.strptime(date_str, expression) - timezone + dt.timedelta(hours=pm_delta)
-            return calendar.timegm(dt_.timetuple())
+            return calendar.timegm(dt_.timetuple()) + (dt_.microsecond / 1e6 if with_milliseconds else 0)
 
     timetuple = email.utils.parsedate_tz(date_str)
     if timetuple:
@@ -1954,7 +1954,7 @@ def urljoin(base, path):
         path = path.decode()
     if not isinstance(path, str) or not path:
         return None
-    if re.match(r'^(?:[a-zA-Z][a-zA-Z0-9+-.]*:)?//', path):
+    if re.match(r'(?:[a-zA-Z][a-zA-Z0-9+-.]*:)?//', path):
         return path
     if isinstance(base, bytes):
         base = base.decode()
@@ -2007,7 +2007,7 @@ def url_or_none(url):
     if not url or not isinstance(url, str):
         return None
     url = url.strip()
-    return url if re.match(r'^(?:(?:https?|rt(?:m(?:pt?[es]?|fp)|sp[su]?)|mms|ftps?):)?//', url) else None
+    return url if re.match(r'(?:(?:https?|rt(?:m(?:pt?[es]?|fp)|sp[su]?)|mms|ftps?):)?//', url) else None
 
 
 def strftime_or_none(timestamp, date_format='%Y%m%d', default=None):
@@ -2038,16 +2038,19 @@ def parse_duration(s):
 
     days, hours, mins, secs, ms = [None] * 5
     m = re.match(r'''(?x)
+            (?P<sign>[+-])?
             (?P<before_secs>
                 (?:(?:(?P<days>[0-9]+):)?(?P<hours>[0-9]+):)?(?P<mins>[0-9]+):)?
             (?P<secs>(?(before_secs)[0-9]{1,2}|[0-9]+))
             (?P<ms>[.:][0-9]+)?Z?$
         ''', s)
     if m:
-        days, hours, mins, secs, ms = m.group('days', 'hours', 'mins', 'secs', 'ms')
+        sign, days, hours, mins, secs, ms = m.group('sign', 'days', 'hours', 'mins', 'secs', 'ms')
     else:
         m = re.match(
-            r'''(?ix)(?:P?
+            r'''(?ix)(?:
+                (?P<sign>[+-])?
+                P?
                 (?:
                     [0-9]+\s*y(?:ears?)?,?\s*
                 )?
@@ -2071,17 +2074,19 @@ def parse_duration(s):
                     (?P<secs>[0-9]+)(?P<ms>\.[0-9]+)?\s*s(?:ec(?:ond)?s?)?\s*
                 )?Z?$''', s)
         if m:
-            days, hours, mins, secs, ms = m.groups()
+            sign, days, hours, mins, secs, ms = m.groups()
         else:
-            m = re.match(r'(?i)(?:(?P<hours>[0-9.]+)\s*(?:hours?)|(?P<mins>[0-9.]+)\s*(?:mins?\.?|minutes?)\s*)Z?$', s)
+            m = re.match(r'(?i)(?P<sign>[+-])?(?:(?P<days>[0-9.]+)\s*(?:days?)|(?P<hours>[0-9.]+)\s*(?:hours?)|(?P<mins>[0-9.]+)\s*(?:mins?\.?|minutes?)\s*)Z?$', s)
             if m:
-                hours, mins = m.groups()
+                sign, days, hours, mins = m.groups()
             else:
                 return None
 
+    sign = -1 if sign == '-' else 1
+
     if ms:
         ms = ms.replace(':', '.')
-    return sum(float(part or 0) * mult for part, mult in (
+    return sign * sum(float(part or 0) * mult for part, mult in (
         (days, 86400), (hours, 3600), (mins, 60), (secs, 1), (ms, 1)))
 
 
@@ -2919,6 +2924,7 @@ def mimetype2ext(mt, default=NO_DEFAULT):
         'audio/webm': 'webm',
         'audio/x-matroska': 'mka',
         'audio/x-mpegurl': 'm3u',
+        'aacp': 'aac',
         'midi': 'mid',
         'ogg': 'ogg',
         'wav': 'wav',
@@ -3112,7 +3118,7 @@ def is_html(first_bytes):
         while first_bytes.startswith(bom):
             encoding, first_bytes = enc, first_bytes[len(bom):]
 
-    return re.match(r'^\s*<', first_bytes.decode(encoding, 'replace'))
+    return re.match(r'\s*<', first_bytes.decode(encoding, 'replace'))
 
 
 def determine_protocol(info_dict):
@@ -5280,7 +5286,7 @@ class FormatSorter:
 
     settings = {
         'vcodec': {'type': 'ordered', 'regex': True,
-                   'order': ['av0?1', 'vp0?9.2', 'vp0?9', '[hx]265|he?vc?', '[hx]264|avc', 'vp0?8', 'mp4v|h263', 'theora', '', None, 'none']},
+                   'order': ['av0?1', 'vp0?9.0?2', 'vp0?9', '[hx]265|he?vc?', '[hx]264|avc', 'vp0?8', 'mp4v|h263', 'theora', '', None, 'none']},
         'acodec': {'type': 'ordered', 'regex': True,
                    'order': ['[af]lac', 'wav|aiff', 'opus', 'vorbis|ogg', 'aac', 'mp?4a?', 'mp3', 'ac-?4', 'e-?a?c-?3', 'ac-?3', 'dts', '', None, 'none']},
         'hdr': {'type': 'ordered', 'regex': True, 'field': 'dynamic_range',
