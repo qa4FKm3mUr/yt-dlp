@@ -31,6 +31,7 @@ from ..utils import (
     update_url_query,
     url_or_none,
 )
+from ..utils.traversal import traverse_obj
 
 
 class BrightcoveLegacyIE(InfoExtractor):
@@ -922,10 +923,18 @@ class BrightcoveNewIE(BrightcoveNewBaseIE):
         errors = json_data.get('errors')
         if errors and errors[0].get('error_subcode') == 'TVE_AUTH':
             custom_fields = json_data['custom_fields']
+            missing_fields = ', '.join(
+                key for key in ('source_url', 'software_statement') if not smuggled_data.get(key))
+            if missing_fields:
+                raise ExtractorError(
+                    f'Missing fields in smuggled data: {missing_fields}. '
+                    f'This video can be only extracted from the webpage where it is embedded. '
+                    f'Pass the URL of the embedding webpage instead of the Brightcove URL', expected=True)
             tve_token = self._extract_mvpd_auth(
                 smuggled_data['source_url'], video_id,
                 custom_fields['bcadobepassrequestorid'],
-                custom_fields['bcadobepassresourceid'])
+                custom_fields['bcadobepassresourceid'],
+                smuggled_data['software_statement'])
             json_data = self._download_json(
                 api_url, video_id, headers={
                     'Accept': f'application/json;pk={policy_key}',
@@ -935,8 +944,8 @@ class BrightcoveNewIE(BrightcoveNewBaseIE):
 
         if content_type == 'playlist':
             return self.playlist_result(
-                [self._parse_brightcove_metadata(vid, vid.get('id'), headers)
-                 for vid in json_data.get('videos', []) if vid.get('id')],
+                (self._parse_brightcove_metadata(vid, vid['id'], headers)
+                 for vid in traverse_obj(json_data, ('videos', lambda _, v: v['id']))),
                 json_data.get('id'), json_data.get('name'),
                 json_data.get('description'))
 
